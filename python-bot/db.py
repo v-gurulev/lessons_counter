@@ -172,119 +172,125 @@ class SQLiteDB(Database):
 
 class PostgresDB(Database):
     def __init__(self):
-        import asyncpg
-        self.asyncpg = asyncpg
-        self.pool = None
         self.dsn = os.getenv("DATABASE_URL")
 
+    def _connect(self):
+        import psycopg2
+        return psycopg2.connect(self.dsn, sslmode="require")
+
+    async def _execute(self, query, params=None, fetch=None):
+        def _run():
+            conn = self._connect()
+            cur = conn.cursor()
+            cur.execute(query, params or ())
+            if fetch == "one":
+                result = cur.fetchone()
+            elif fetch == "all":
+                result = cur.fetchall()
+            else:
+                result = cur.rowcount
+            conn.commit()
+            cur.close()
+            conn.close()
+            return result
+        return await asyncio.to_thread(_run)
+
     async def init(self):
-        self.pool = await self.asyncpg.create_pool(self.dsn)
-        async with self.pool.acquire() as conn:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS config (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                )
-            """)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS students (
-                    id SERIAL PRIMARY KEY,
-                    chat_id TEXT UNIQUE,
-                    name TEXT,
-                    group_chat_id TEXT,
-                    bought INTEGER DEFAULT 0,
-                    spent INTEGER DEFAULT 0,
-                    last_lesson_date TEXT
-                )
-            """)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS transactions (
-                    id SERIAL PRIMARY KEY,
-                    date TEXT,
-                    chat_id TEXT,
-                    name TEXT,
-                    type TEXT,
-                    count INTEGER,
-                    note TEXT
-                )
-            """)
+        await self._execute("""
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        await self._execute("""
+            CREATE TABLE IF NOT EXISTS students (
+                id SERIAL PRIMARY KEY,
+                chat_id TEXT UNIQUE,
+                name TEXT,
+                group_chat_id TEXT,
+                bought INTEGER DEFAULT 0,
+                spent INTEGER DEFAULT 0,
+                last_lesson_date TEXT
+            )
+        """)
+        await self._execute("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                date TEXT,
+                chat_id TEXT,
+                name TEXT,
+                type TEXT,
+                count INTEGER,
+                note TEXT
+            )
+        """)
 
     async def get_config(self, key):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT value FROM config WHERE key = $1", key)
-            return row["value"] if row else None
+        row = await self._execute("SELECT value FROM config WHERE key = %s", (key,), fetch="one")
+        return row[0] if row else None
 
     async def set_config(self, key, value):
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
-                key, value
-            )
+        await self._execute(
+            "INSERT INTO config (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (key, value)
+        )
 
     async def find_student_by_chat(self, chat_id):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM students WHERE chat_id = $1", str(chat_id))
-            if row:
-                return {
-                    "id": row["id"], "chat_id": row["chat_id"], "name": row["name"],
-                    "group_chat_id": row["group_chat_id"], "bought": row["bought"] or 0,
-                    "spent": row["spent"] or 0, "balance": (row["bought"] or 0) - (row["spent"] or 0),
-                    "last_lesson_date": row["last_lesson_date"]
-                }
-            return None
+        row = await self._execute("SELECT * FROM students WHERE chat_id = %s", (str(chat_id),), fetch="one")
+        if row:
+            return {
+                "id": row[0], "chat_id": row[1], "name": row[2],
+                "group_chat_id": row[3], "bought": row[4] or 0,
+                "spent": row[5] or 0, "balance": (row[4] or 0) - (row[5] or 0),
+                "last_lesson_date": row[6]
+            }
+        return None
 
     async def find_student_by_group(self, group_chat_id):
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM students WHERE group_chat_id = $1", str(group_chat_id))
-            if row:
-                return {
-                    "id": row["id"], "chat_id": row["chat_id"], "name": row["name"],
-                    "group_chat_id": row["group_chat_id"], "bought": row["bought"] or 0,
-                    "spent": row["spent"] or 0, "balance": (row["bought"] or 0) - (row["spent"] or 0),
-                    "last_lesson_date": row["last_lesson_date"]
-                }
-            return None
+        row = await self._execute("SELECT * FROM students WHERE group_chat_id = %s", (str(group_chat_id),), fetch="one")
+        if row:
+            return {
+                "id": row[0], "chat_id": row[1], "name": row[2],
+                "group_chat_id": row[3], "bought": row[4] or 0,
+                "spent": row[5] or 0, "balance": (row[4] or 0) - (row[5] or 0),
+                "last_lesson_date": row[6]
+            }
+        return None
 
     async def add_student(self, chat_id, name, group_chat_id=None):
-        async with self.pool.acquire() as conn:
-            try:
-                await conn.execute(
-                    "INSERT INTO students (chat_id, name, group_chat_id) VALUES ($1, $2, $3)",
-                    str(chat_id), name, str(group_chat_id) if group_chat_id else None
-                )
-                return True
-            except Exception:
-                return False
+        try:
+            await self._execute(
+                "INSERT INTO students (chat_id, name, group_chat_id) VALUES (%s, %s, %s)",
+                (str(chat_id), name, str(group_chat_id) if group_chat_id else None)
+            )
+            return True
+        except Exception:
+            return False
 
     async def update_counters(self, chat_id, field, delta):
-        async with self.pool.acquire() as conn:
-            if field == "bought":
-                await conn.execute("UPDATE students SET bought = bought + $1 WHERE chat_id = $2", delta, str(chat_id))
-            else:
-                await conn.execute("UPDATE students SET spent = spent + $1 WHERE chat_id = $2", delta, str(chat_id))
+        if field == "bought":
+            await self._execute("UPDATE students SET bought = bought + %s WHERE chat_id = %s", (delta, str(chat_id)))
+        else:
+            await self._execute("UPDATE students SET spent = spent + %s WHERE chat_id = %s", (delta, str(chat_id)))
 
     async def update_last_lesson(self, chat_id):
         now = datetime.now().strftime("%d.%m.%Y %H:%M")
-        async with self.pool.acquire() as conn:
-            await conn.execute("UPDATE students SET last_lesson_date = $1 WHERE chat_id = $2", now, str(chat_id))
+        await self._execute("UPDATE students SET last_lesson_date = %s WHERE chat_id = %s", (now, str(chat_id)))
 
     async def log_transaction(self, chat_id, name, t_type, count, note):
         now = datetime.now().isoformat()
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO transactions (date, chat_id, name, type, count, note) VALUES ($1, $2, $3, $4, $5, $6)",
-                now, str(chat_id), name, t_type, count, note
-            )
+        await self._execute(
+            "INSERT INTO transactions (date, chat_id, name, type, count, note) VALUES (%s, %s, %s, %s, %s, %s)",
+            (now, str(chat_id), name, t_type, count, note)
+        )
 
     async def get_all_students(self):
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch("SELECT name, bought, spent, last_lesson_date FROM students")
-            return [(r["name"], r["bought"], r["spent"], r["last_lesson_date"]) for r in rows]
+        rows = await self._execute("SELECT name, bought, spent, last_lesson_date FROM students", fetch="all")
+        return rows
 
     async def delete_student(self, chat_id):
-        async with self.pool.acquire() as conn:
-            result = await conn.execute("DELETE FROM students WHERE chat_id = $1", str(chat_id))
-            return int(result.split()[-1]) > 0
+        rowcount = await self._execute("DELETE FROM students WHERE chat_id = %s", (str(chat_id),))
+        return rowcount > 0
 
 
 # ==================== GOOGLE SHEETS ====================
