@@ -1,172 +1,87 @@
-# 🤖 Lesson Counter Bot — Локальная отладка
+# 🤖 Lesson Counter Bot — Python + Google Sheets + Render.com
 
-Локальный симулятор Google Apps Script для отладки бота учета занятий с репетитором.
+Бот для учета занятий с репетитором. Работает на Python, хранит данные в **Google Sheets** (не теряются при перезапусках), хостится на Render.com.
 
-## 📁 Структура
+---
 
+## 🚀 Быстрый старт (для нового владельца)
+
+### 1. Создать Google Таблицу
+1. Открой [Google Sheets](https://sheets.new)
+2. Создай пустую таблицу
+3. Поделись доступом с сервисным аккаунтом (см. шаг 3)
+
+### 2. Создать Google Service Account
+1. Перейди в [Google Cloud Console](https://console.cloud.google.com/)
+2. Создай проект → включи **Google Sheets API**
+3. **IAM & Admin** → **Service Accounts** → **Create**
+4. Скачай JSON-ключ (`credentials.json`)
+5. Скопируй **весь JSON как текст** — он понадобится для Render
+
+### 3. Поделиться таблицей
+В Google Sheets нажми **Share** → вставь email сервисного аккаунта (из `credentials.json`, поле `client_email`)
+
+### 4. Задеплоить на Render
+1. Зарегистрируйся на [render.com](https://render.com) через GitHub
+2. **New → Web Service** → подключи этот репозиторий
+3. Настройки:
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `python main.py`
+4. Добавь Environment Variables:
+
+| Key | Value | Описание |
+|-----|-------|----------|
+| `BOT_TOKEN` | `8680311824:AAE...` | Токен от @BotFather |
+| `WEBHOOK_URL` | `https://your-bot.onrender.com` | URL сервиса |
+| `GOOGLE_SHEET_ID` | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms` | ID таблицы из URL |
+| `GOOGLE_CREDENTIALS` | `{...весь JSON...}` | Весь JSON из credentials.json |
+
+5. Нажми **Create Web Service**
+
+### 5. Установить webhook
 ```
-├── src/
-│   ├── bot.js          # Логика бота (идентично GAS)
-│   ├── test-cli.js     # CLI-тесты без сервера
-│   └── server.js       # Express-сервер для webhook
-├── shims/              # Эмуляция GAS API
-│   ├── SpreadsheetApp.js    # CSV вместо Google Sheets
-│   ├── PropertiesService.js # JSON вместо GAS Properties
-│   ├── Utilities.js         # Форматирование дат
-│   ├── Session.js           # Timezone
-│   ├── ContentService.js    # Заглушка
-│   ├── UrlFetchApp.js       # HTTP-запросы
-│   └── Logger.js            # console.log
-├── data/               # Локальные данные (CSV + JSON)
-│   ├── Ученики.csv
-│   ├── Транзакции.csv
-│   ├── Конфиг.csv
-│   └── properties.json
-└── package.json
-```
-
-## 🚀 Быстрый старт
-
-### 1. Установка зависимостей
-
-```bash
-npm install
-```
-
-### 2. CLI-тестирование (без Telegram, самое быстрое)
-
-```bash
-npm test
-```
-
-Или:
-
-```bash
-node src/test-cli.js
+https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://your-bot.onrender.com
 ```
 
-Это запустит полный набор тестов:
+---
+
+## 📁 Структура проекта
+
+```
+python-bot/
+├── main.py           # Логика бота (handlers)
+├── db.py             # База данных: SQLite или Google Sheets
+├── test_bot.py       # 32 теста
+├── requirements.txt  # Зависимости
+├── render.yaml       # Blueprint для Render
+└── README.md         # Этот файл
+```
+
+## 📝 Функционал
+
 - `/start` — назначение админа
-- `/addstudent` — добавление ученика
-- `/myid` — получение ID
+- `/register` (reply на сообщение ученика) — добавить ученика в группе
+- `/addstudent [chat_id] [group_chat_id] [Имя]` — добавить ученика вручную
+- `/deletestudent [chat_id]` — удалить ученика
+- `/stats` — сводка по всем ученикам
+- `/myid` — узнать chat_id или ID группы
 - `+4` — пополнение баланса
 - `meet.google.com/...` — списание занятия
-- `/stats` — сводка
+- Авто-регистрация ученика при первом сообщении в группе
+- Тестовый режим: если в группе только админ + бот, админ = ученик
 
-После теста в консоли отобразится содержимое всех CSV-файлов.
+## 🗄️ Где хранятся данные
 
-### 3. Локальный сервер (для реального Telegram)
+Если задан `GOOGLE_SHEET_ID` — данные в **Google Sheets** (3 листа: Config, Students, Transactions).
 
-```bash
-npm start
-```
+Если НЕ задан — используется **SQLite** локально (для тестов).
 
-Сервер запустится на `http://localhost:3000`.
+---
 
-Чтобы протестировать с реальным Telegram:
-
-1. Установите [ngrok](https://ngrok.com/) или используйте `npx`:
-   ```bash
-   npx ngrok http 3000
-   ```
-2. Скопируйте HTTPS-URL от ngrok.
-3. Установите webhook:
-   ```
-   https://api.telegram.org/bot<ВАШ_ТОКЕН>/setWebhook?url=<NGROK_URL>/
-   ```
-
-### 4. Установка токена
-
-Если хотите, чтобы бот отправлял реальные сообщения в Telegram (не только логировал в консоль):
-
-**Вариант A — через переменную окружения (рекомендуется):**
-```bash
-set BOT_TOKEN=123456:ABC...
-node src/test-cli.js
-```
-
-**Вариант B — через код:**
-Раскомментируйте в `src/test-cli.js`:
-```javascript
-process.env.BOT_TOKEN = "123456:ABC...";
-bot.setBotToken();
-```
-
-## 🔄 Деплой в Google Apps Script
-
-### ✅ Путь А: Автосборка (рекомендуется)
-
-Всё делается одной командой — код подготовится сам:
+## ✅ Тесты
 
 ```bash
-npm run build:gas
+python -m unittest test_bot -v
 ```
 
-Это создаст файл `dist/bot.gas.js`, в котором:
-- ✅ Убраны Node.js-экспорты
-- ✅ Возвращена формула баланса (`=C-D`) для Google Sheets
-- ✅ Дата записывается как объект `Date` (не строка)
-- ✅ Токен в `setBotToken()` ожидает ручной вставки
-
-**Дальше — 5 шагов:**
-
-1. Откройте `dist/bot.gas.js`, **скопируйте всё содержимое** и вставьте в редактор Google Apps Script (замените старый код целиком).
-2. Найдите в самом низу `setBotToken()` и замените `"ВАШ_ТОКЕН_ЗДЕСЬ"` на реальный токен от @BotFather.
-3. Нажмите ▶️ на `setBotToken()` — она сохранит токен в лист «Конфиг» таблицы.
-4. **Deploy → New deployment → Web app**:
-   - **Execute as:** Me
-   - **Who has access:** **Anyone** (это критично!)
-   - Скопируйте Web App URL (через кнопку 📋, проверьте что нет пробела в конце)
-5. Установите webhook в браузере:
-   ```
-   https://api.telegram.org/bot<ТОКЕН>/setWebhook?url=<ВАШ_WEB_APP_URL>
-   ```
-   Проверьте:
-   ```
-   https://api.telegram.org/bot<ТОКЕН>/getWebhookInfo
-   ```
-   Должно быть `"pending_update_count": 0` и **нет** `last_error_message`.
-
-### 🆘 Путь Б: Откат / выключение
-
-Если нужно быстро остановить бота без удаления кода:
-```
-https://api.telegram.org/bot<ТОКЕН>/deleteWebhook
-```
-Чтобы включить обратно — повторите шаг 5 из Пути А.
-
-### 📋 Чек-лист деплоя
-
-| Шаг | Команда / Действие |
-|-----|-------------------|
-| Тесты зелёные | `npm run test:all` → 14/14 ✅ |
-| Сборка готова | `npm run build:gas` |
-| Токен вставлен | В `setBotToken()` заменена строка |
-| Токен сохранён | ▶️ `setBotToken()` в редакторе GAS |
-| Web App деплой | Deploy → Web app → **Anyone** |
-| Webhook установлен | `getWebhookInfo` без ошибок |
-| Бот отвечает | `/start` в Telegram → приветствие |
-
-## ⚠️ Важные нюансы при деплое
-
-1. **Не забудьте `doGet`** — он уже в коде (возвращает "Bot is running"). Без него Google может отдавать 302.
-2. **Anyone в доступе** — иначе Telegram получит 403.
-3. **Пробел в URL** — при копировании из Deploy проверьте конец строки. Лучше копируйте через кнопку 📋.
-4. **Очистите защиту от дублей** — запустите `clearDuplicateProtection()` в редакторе GAS после первого деплоя.
-5. **Если бот молчит** — откройте ⌛ Execution log и ищите красные ошибки.
-
-## 📝 Особенности локальной версии
-
-| GAS API | Локальная замена |
-|---------|------------------|
-| Google Sheets | CSV-файлы в `data/` |
-| PropertiesService | `data/properties.json` |
-| UrlFetchApp | `fetch()` (Node.js 18+) |
-| Utilities.formatDate | `Intl.DateTimeFormat` |
-| Logger.log | `console.log` |
-
-Баланс в локальной версии считается динамически (`bought - spent`), а в GAS — через формулу в ячейке.
-
-## 🛠 Отладка
-
-Все `Logger.log()` из кода выводятся в консоль. Если что-то идет не так — смотрите вывод теста.
+32 теста покрывают все сценарии: пополнение, списание, авто-регистрацию, edge cases.
