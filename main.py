@@ -5,6 +5,7 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes
 from db import get_db
+from i18n import _, get_lang, LANG_NAMES
 
 DB_PATH = os.getenv("DB_PATH", "bot.db")
 
@@ -23,52 +24,68 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = await db.get_config("ADMIN_CHAT_ID")
     chat_id = str(update.effective_chat.id)
     is_private = update.effective_chat.type == "private"
+    lang = await get_lang()
 
     if not admin_id and is_private:
         await db.set_config("ADMIN_CHAT_ID", chat_id)
         await update.message.reply_text(
-            "👨‍🏫 Вы назначены репетитором (админом).\n\n"
-            "Команды:\n"
-            "/addstudent [chat_id] [group_chat_id] [Имя] — добавить ученика\n"
-            "/stats — сводка по всем ученикам\n"
-            "/myid — узнать свой chat_id или ID группы\n\n"
-            f"Чтобы протестировать, добавьте себя как ученика:\n"
-            f"/addstudent {chat_id} ТестовыйУченик"
+            _("start_admin_set", lang, chat_id=chat_id)
         )
         return
 
     if not admin_id:
-        await update.message.reply_text("Напишите /start для первоначальной настройки.")
+        await update.message.reply_text(_("start_first_setup", lang))
         return
 
     if chat_id == admin_id and is_private:
         await update.message.reply_text(
-            "👨‍🏫 Вы уже админ.\n\n"
-            "Команды:\n"
-            "• /addstudent [chat_id] [group_chat_id] [Имя]\n"
-            "• /stats\n"
-            "• /myid\n\n"
-            f"Чтобы протестировать как ученик, добавьте себя:\n"
-            f"/addstudent {chat_id} Тест"
+            _("start_admin_already", lang, chat_id=chat_id)
         )
         return
 
 
+async def lang_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    admin_id = await db.get_config("ADMIN_CHAT_ID")
+    chat_id = str(update.effective_chat.id)
+    lang = await get_lang()
+
+    if chat_id != admin_id or update.effective_chat.type != "private":
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            _("lang_current", lang, lang_name=LANG_NAMES.get(lang, lang))
+        )
+        return
+
+    new_lang = args[0].lower()
+    if new_lang not in ("ru", "en"):
+        await update.message.reply_text(_("lang_usage", lang), parse_mode="Markdown")
+        return
+
+    await db.set_config("language", new_lang)
+    await update.message.reply_text(
+        _("lang_changed", new_lang, lang_name=LANG_NAMES.get(new_lang, new_lang))
+    )
+
+
 async def myid_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
+    lang = await get_lang()
+
     if update.effective_chat.type in ("group", "supergroup"):
         await update.message.reply_text(
-            f"ID этой группы: {chat_id}\n\n"
-            f"Используйте его при добавлении ученика:\n"
-            f"/addstudent [личный_chat_id] {chat_id} [Имя]"
+            _("myid_group", lang, chat_id=chat_id)
         )
     else:
-        await update.message.reply_text(f"Ваш chat_id: {chat_id}")
+        await update.message.reply_text(_("myid_private", lang, chat_id=chat_id))
 
 
 async def addstudent_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = await db.get_config("ADMIN_CHAT_ID")
     chat_id = str(update.effective_chat.id)
+    lang = await get_lang()
 
     if chat_id != admin_id or update.effective_chat.type != "private":
         return
@@ -76,8 +93,7 @@ async def addstudent_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
-            "❌ Формат: `/addstudent [chat_id] [group_chat_id] [Имя]`\n"
-            "`group_chat_id` опционально (начинается с `-`)",
+            _("addstudent_format", lang),
             parse_mode="Markdown"
         )
         return
@@ -94,32 +110,33 @@ async def addstudent_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     success = await db.add_student(student_chat_id, name, group_chat_id)
 
     if success:
-        msg = f"✅ Ученик добавлен: *{name}* (личный ID: `{student_chat_id}`"
-        if group_chat_id:
-            msg += f", группа: `{group_chat_id}`"
-        msg += ")"
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        group_text = f", группа: `{group_chat_id}`" if group_chat_id else ""
+        await update.message.reply_text(
+            _("addstudent_success", lang, name=name, student_chat_id=student_chat_id, group_text=group_text),
+            parse_mode="Markdown"
+        )
     else:
-        await update.message.reply_text("⚠️ Ученик с таким chat_id уже существует.")
+        await update.message.reply_text(_("addstudent_exists", lang))
 
 
 async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = await db.get_config("ADMIN_CHAT_ID")
     chat_id = str(update.effective_chat.id)
+    lang = await get_lang()
 
     if chat_id != admin_id or update.effective_chat.type != "private":
         return
 
     students = await db.get_all_students()
     if not students:
-        await update.message.reply_text("📊 Учеников пока нет.")
+        await update.message.reply_text(_("stats_empty", lang))
         return
 
-    msg = "📊 *Сводка по ученикам:*\n\n"
+    msg = _("stats_header", lang)
     for name, bought, spent, last in students:
         bal = (bought or 0) - (spent or 0)
         last = last or "—"
-        msg += f"• *{name}*: {bal} занятий _(последнее: {last})_\n"
+        msg += _("stats_row", lang, name=name, bal=bal, last=last)
 
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -127,6 +144,7 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def deletestudent_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = await db.get_config("ADMIN_CHAT_ID")
     chat_id = str(update.effective_chat.id)
+    lang = await get_lang()
 
     if chat_id != admin_id or update.effective_chat.type != "private":
         return
@@ -134,7 +152,7 @@ async def deletestudent_handler(update: Update, context: ContextTypes.DEFAULT_TY
     args = context.args
     if len(args) < 1:
         await update.message.reply_text(
-            "❌ Формат: `/deletestudent [chat_id]`",
+            _("deletestudent_format", lang),
             parse_mode="Markdown"
         )
         return
@@ -143,48 +161,48 @@ async def deletestudent_handler(update: Update, context: ContextTypes.DEFAULT_TY
     success = await db.delete_student(student_chat_id)
 
     if success:
-        await update.message.reply_text(f"✅ Ученик удалён (ID: `{student_chat_id}`)", parse_mode="Markdown")
+        await update.message.reply_text(
+            _("deletestudent_success", lang, student_chat_id=student_chat_id),
+            parse_mode="Markdown"
+        )
     else:
-        await update.message.reply_text("⚠️ Ученик с таким chat_id не найден.")
+        await update.message.reply_text(_("deletestudent_not_found", lang))
 
 
 async def register_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = await db.get_config("ADMIN_CHAT_ID")
     chat_id = str(update.effective_chat.id)
     user_id = str(update.effective_user.id)
+    lang = await get_lang()
 
     if user_id != admin_id:
         return
 
     if update.effective_chat.type not in ("group", "supergroup"):
-        await update.message.reply_text("Эта команда работает только в группах.")
+        await update.message.reply_text(_("register_only_groups", lang))
         return
 
     if update.message.reply_to_message:
         student_user = update.message.reply_to_message.from_user
         if not student_user:
-            await update.message.reply_text("Не удалось определить ученика.")
+            await update.message.reply_text(_("register_no_user", lang))
             return
         if str(student_user.id) == admin_id:
-            await update.message.reply_text("Нельзя зарегистрировать себя как ученика.")
+            await update.message.reply_text(_("register_admin_self", lang))
             return
         if student_user.is_bot:
-            await update.message.reply_text("Нельзя зарегистрировать бота как ученика.")
+            await update.message.reply_text(_("register_bot", lang))
             return
 
-        name = student_user.first_name or "Ученик"
+        name = student_user.first_name or _("student_default_name", lang, default="Ученик")
         success = await db.add_student(str(student_user.id), name, chat_id)
         if success:
-            await update.message.reply_text(f"✅ Ученик {name} добавлен!")
+            await update.message.reply_text(_("register_success", lang, name=name))
         else:
-            await update.message.reply_text("⚠️ Ученик уже зарегистрирован.")
+            await update.message.reply_text(_("register_exists", lang))
         return
 
-    await update.message.reply_text(
-        "📋 Чтобы зарегистрировать ученика:\n"
-        "1. Найдите сообщение ученика в группе\n"
-        "2. Ответьте на него этой командой: /register"
-    )
+    await update.message.reply_text(_("register_instructions", lang))
 
 
 async def chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -193,17 +211,13 @@ async def chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     new_status = update.my_chat_member.new_chat_member.status
     old_status = update.my_chat_member.old_chat_member.status
     chat = update.my_chat_member.chat
+    lang = await get_lang()
 
     if chat.type in ("group", "supergroup") and new_status in ("member", "administrator"):
         if old_status not in ("member", "administrator"):
             await context.bot.send_message(
                 chat.id,
-                "👋 Привет! Я бот для учёта занятий.\n\n"
-                "📋 Как работать:\n"
-                "• Кидайте ссылку на Google Meet — я спишу занятие\n"
-                "• Для пополнения баланса напишите: +4 (можно прямо здесь или в личку)\n"
-                "• /myid — узнать ID этой группы\n\n"
-                "✨ Ученик добавится автоматически при первом сообщении!"
+                _("welcome_group", lang)
             )
 
 
@@ -211,6 +225,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     text = update.message.text or ""
     is_group = update.effective_chat.type in ("group", "supergroup")
+    lang = await get_lang()
 
     student = None
     if is_group:
@@ -226,7 +241,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not admin_id:
             if "meet.google.com" in text or text.startswith("/"):
                 await update.message.reply_text(
-                    "⛔ Сначала назначьте админа. Напишите /start боту в личные сообщения."
+                    _("need_admin_setup", lang)
                 )
             return
 
@@ -234,45 +249,41 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 member_count = await context.bot.get_chat_member_count(int(chat_id))
                 if member_count <= 2:
-                    name = update.effective_user.first_name or "Тест"
+                    name = update.effective_user.first_name or _("test_default_name", lang, default="Тест")
                     await db.add_student(user_id, name, chat_id)
                     await update.message.reply_text(
-                        f"✅ Режим теста: админ зарегистрирован как ученик {name}!"
+                        _("test_mode_admin", lang, name=name)
                     )
                     student = await db.find_student_by_group(chat_id)
                 else:
                     if "meet.google.com" in text:
                         await update.message.reply_text(
-                            "⛔ Ученик ещё не зарегистрирован. Пусть ученик напишет что-нибудь в группу."
+                            _("need_register_meet", lang)
                         )
                     return
             except Exception:
                 if "meet.google.com" in text:
                     await update.message.reply_text(
-                        "⛔ Ученик ещё не зарегистрирован. Пусть ученик напишет что-нибудь в группу."
+                        _("need_register_meet", lang)
                     )
                 return
 
         elif user_id:
-            name = update.effective_user.first_name or "Ученик"
+            name = update.effective_user.first_name or _("student_default_name", lang, default="Ученик")
             await db.add_student(user_id, name, chat_id)
             await update.message.reply_text(
-                f"✅ Ученик *{name}* добавлен автоматически!\n\n"
-                f"💰 Пополнить баланс: отправьте *+4*\n"
-                f"🔗 Meet-ссылка — спишет занятие",
+                _("auto_register_success", lang, name=name),
                 parse_mode="Markdown"
             )
             student = await db.find_student_by_group(chat_id)
 
     if not is_group and not student and chat_id != admin_id:
-        await update.message.reply_text("⛔ Вы не зарегистрированы. Попросите репетитора добавить вас.")
+        await update.message.reply_text(_("not_registered", lang))
         return
 
     if not is_group and not student and chat_id == admin_id:
         await update.message.reply_text(
-            "ℹ️ Вы админ.\nКоманды: /addstudent, /stats, /myid\n\n"
-            f"Чтобы протестировать как ученик, добавьте себя:\n"
-            f"`/addstudent {chat_id} Тест`",
+            _("admin_panel", lang, chat_id=chat_id),
             parse_mode="Markdown"
         )
         return
@@ -282,44 +293,44 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_group:
             return
         if not student:
-            await update.message.reply_text("⛔ Вы не зарегистрированы.")
+            await update.message.reply_text(_("not_registered", lang))
             return
 
         if student["balance"] <= 0:
-            await update.message.reply_text("⚠️ У вас закончились занятия! Пополните баланс.")
+            await update.message.reply_text(_("meet_zero_balance", lang))
             if admin_id:
                 await context.bot.send_message(
                     admin_id,
-                    f"🚨 У ученика *{student['name']}* баланс = 0!",
+                    _("meet_zero_balance_admin", lang, name=student["name"]),
                     parse_mode="Markdown"
                 )
             return
 
-        await db.log_transaction(student["chat_id"], student["name"], "списание", 1, text)
+        await db.log_transaction(student["chat_id"], student["name"], _("log_charge", lang), 1, text)
         await db.update_counters(student["chat_id"], "spent", 1)
         await db.update_last_lesson(student["chat_id"])
 
         new_bal = student["balance"] - 1
         await update.message.reply_text(
-            f"✅ Урок начался и засчитан.\nОсталось занятий: *{new_bal}*",
+            _("meet_success", lang, new_bal=new_bal),
             parse_mode="Markdown"
         )
         if admin_id:
             await context.bot.send_message(
                 admin_id,
-                f"📊 Ученик *{student['name']}* — проведен урок.\nОсталось: *{new_bal}*",
+                _("meet_success_admin", lang, name=student["name"], new_bal=new_bal),
                 parse_mode="Markdown"
             )
 
         if new_bal == 1:
             await update.message.reply_text(
-                "⚠️ У вас осталось *1* занятие. Не забудьте пополнить баланс!",
+                _("meet_one_left", lang),
                 parse_mode="Markdown"
             )
             if admin_id:
                 await context.bot.send_message(
                     admin_id,
-                    f"🔔 У ученика *{student['name']}* осталось *1* занятие.",
+                    _("meet_one_left_admin", lang, name=student["name"]),
                     parse_mode="Markdown"
                 )
         return
@@ -330,21 +341,21 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count = int(match.group(1))
         if 0 < count <= 50:
             if not student:
-                await update.message.reply_text("⛔ Вы не зарегистрированы.")
+                await update.message.reply_text(_("topup_unregistered", lang))
                 return
 
-            await db.log_transaction(student["chat_id"], student["name"], "пополнение", count, text)
+            await db.log_transaction(student["chat_id"], student["name"], _("log_topup", lang), count, text)
             await db.update_counters(student["chat_id"], "bought", count)
 
             new_bal = student["balance"] + count
             await update.message.reply_text(
-                f"💰 Пополнение на *{count}* занятий.\nТекущий баланс: *{new_bal}*",
+                _("topup_success", lang, count=count, new_bal=new_bal),
                 parse_mode="Markdown"
             )
             if admin_id:
                 await context.bot.send_message(
                     admin_id,
-                    f"💰 Ученик *{student['name']}* пополнил баланс на *{count}*.\nВсего: *{new_bal}*",
+                    _("topup_success_admin", lang, name=student["name"], count=count, new_bal=new_bal),
                     parse_mode="Markdown"
                 )
             return
@@ -353,9 +364,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "🤔 Не понял команду.\n\n"
-        "Отправьте число для пополнения (например: *+4* или *пакет 4*).\n"
-        "Репетитор кидает ссылку на *Google Meet* — бот автоматически спишет занятие.",
+        _("unknown_command", lang),
         parse_mode="Markdown"
     )
 
@@ -370,6 +379,7 @@ def main():
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_handler))
+    application.add_handler(CommandHandler("lang", lang_handler))
     application.add_handler(CommandHandler("myid", myid_handler))
     application.add_handler(CommandHandler("addstudent", addstudent_handler))
     application.add_handler(CommandHandler("stats", stats_handler))

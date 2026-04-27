@@ -1,12 +1,13 @@
-# AGENTS.md — Lesson Counter Bot
+<!-- AGENTS.md — Lesson Counter Bot -->
 
 ## Стек
 
 - **Python 3.14+**, async/await
 - **python-telegram-bot** 22.x (webhooks)
-- **База данных**: Supabase PostgreSQL (production) / SQLite (local tests)
+- **База данных**: Supabase PostgreSQL (production) / SQLite (local tests) / Google Sheets (legacy)
 - **Драйвер БД**: `psycopg2-binary` (через `asyncio.to_thread`) + `aiosqlite`
 - **Хостинг**: Render.com free tier (webhook mode)
+- **Локализация**: `i18n.py` — ru/en, переключается админом через `/lang`
 
 ## Структура проекта
 
@@ -14,12 +15,13 @@
 .
 ├── main.py              # Точка входа, хендлеры Telegram
 ├── db.py                # Абстракция БД: SQLiteDB / PostgresDB / SheetsDB
-├── test_bot.py          # 32 unit-теста (async, SQLite backend)
+├── i18n.py              # Локализация: TRANSLATIONS + _() + get_lang()
+├── test_bot.py          # 36 unit-тестов (async, SQLite backend)
 ├── requirements.txt     # Зависимости
 ├── render.yaml          # Blueprint для Render
-├── README.md            # Документация для пользователей
-├── SUPABASE_SETUP.md    # Инструкция по подключению Supabase
-└── GOOGLE_SHEETS_SETUP.md # Инструкция по Google Sheets (резерв)
+├── DEPLOY.md            # Чек-лист деплоя
+├── TEACHER_GUIDE.md     # Инструкция для репетитора
+└── README.md            # Обзор проекта
 ```
 
 ## Архитектура БД
@@ -33,9 +35,24 @@
 | ничего | `SQLiteDB` (файл `bot.db`) |
 
 **Таблицы** (авто-создаются при `db.init()`):
-- `config(key TEXT PRIMARY KEY, value TEXT)` — admin_id и др.
+- `config(key TEXT PRIMARY KEY, value TEXT)` — admin_id, language и др.
 - `students(id, chat_id, name, group_chat_id, bought, spent, last_lesson_date)`
 - `transactions(id, date, chat_id, name, type, count, note)`
+
+## Локализация
+
+Все строки вынесены в `i18n.py`. В хендлерах используется:
+
+```python
+from i18n import _, get_lang
+
+lang = await get_lang()
+await update.message.reply_text(_("key", lang, name="..."))
+```
+
+- По умолчанию язык `ru`
+- Хранится в `config.language`
+- Меняется админом: `/lang ru` или `/lang en`
 
 ## Ключевые env vars (Render)
 
@@ -51,7 +68,7 @@ PORT=10000
 ## Тесты
 
 ```bash
-python test_bot.py   # 32 тестов, SQLite backend
+python test_bot.py   # 36 тестов, SQLite backend
 ```
 
 Все тесты мокают Telegram Update/Context. Для Postgres/Google Sheets тестов нет — тестируется только SQLite backend.

@@ -481,6 +481,54 @@ class TestBotLogic(unittest.IsolatedAsyncioTestCase):
         student = await main.db.find_student_by_group("-987654321")
         self.assertIsNone(student)
 
+    async def test_33_lang_change_to_en(self):
+        """Админ меняет язык на английский"""
+        await main.db.set_config("ADMIN_CHAT_ID", "320246687")
+        update = MockUpdate("/lang", chat_id=320246687, from_user_id=320246687)
+        context = MockContext(args=["en"])
+        await main.lang_handler(update, context)
+
+        text = update.message.reply_text.call_args[0][0]
+        self.assertIn("English", text)
+        self.assertIn("changed", text)
+
+        lang = await main.db.get_config("language")
+        self.assertEqual(lang, "en")
+
+    async def test_34_lang_change_back_to_ru(self):
+        """Админ меняет язык обратно на русский"""
+        await main.db.set_config("ADMIN_CHAT_ID", "320246687")
+        await main.db.set_config("language", "en")
+        update = MockUpdate("/lang", chat_id=320246687, from_user_id=320246687)
+        context = MockContext(args=["ru"])
+        await main.lang_handler(update, context)
+
+        text = update.message.reply_text.call_args[0][0]
+        self.assertIn("Русский", text)
+
+        lang = await main.db.get_config("language")
+        self.assertEqual(lang, "ru")
+
+    async def test_35_lang_affects_messages(self):
+        """После смены языка на en сообщения на английском"""
+        await main.db.set_config("ADMIN_CHAT_ID", "320246687")
+        await main.db.set_config("language", "en")
+        update = MockUpdate("/start", chat_id=320246687, from_user_id=320246687)
+        context = MockContext()
+        await main.start_handler(update, context)
+
+        text = update.message.reply_text.call_args[0][0]
+        self.assertIn("admin", text.lower())
+        self.assertNotIn("репетитором", text)
+
+    async def test_36_lang_only_admin(self):
+        """Не-админ не может менять язык"""
+        await main.db.set_config("ADMIN_CHAT_ID", "320246687")
+        update = MockUpdate("/lang", chat_id=111222333, from_user_id=111222333)
+        context = MockContext(args=["en"])
+        await main.lang_handler(update, context)
+        update.message.reply_text.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
