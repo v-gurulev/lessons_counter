@@ -9,7 +9,8 @@ TRANSLATIONS = {
             "Команды:\n"
             "/addstudent [chat_id] [group_chat_id] [Имя] — добавить ученика\n"
             "/stats — сводка по всем ученикам\n"
-            "/myid — узнать свой chat_id или ID группы\n\n"
+            "/myid — узнать свой chat_id или ID группы\n"
+            "/lang ru или /lang en — сменить язык\n\n"
             "Чтобы протестировать, добавьте себя как ученика:\n"
             "/addstudent {chat_id} ТестовыйУченик"
         ),
@@ -19,7 +20,8 @@ TRANSLATIONS = {
             "Команды:\n"
             "• /addstudent [chat_id] [group_chat_id] [Имя]\n"
             "• /stats\n"
-            "• /myid\n\n"
+            "• /myid\n"
+            "• /lang ru или /lang en\n\n"
             "Чтобы протестировать как ученик, добавьте себя:\n"
             "/addstudent {chat_id} Тест"
         ),
@@ -101,7 +103,8 @@ TRANSLATIONS = {
             "Commands:\n"
             "/addstudent [chat_id] [group_chat_id] [Name] — add a student\n"
             "/stats — summary for all students\n"
-            "/myid — get your chat_id or group ID\n\n"
+            "/myid — get your chat_id or group ID\n"
+            "/lang ru or /lang en — change language\n\n"
             "To test, add yourself as a student:\n"
             "/addstudent {chat_id} TestStudent"
         ),
@@ -111,7 +114,8 @@ TRANSLATIONS = {
             "Commands:\n"
             "• /addstudent [chat_id] [group_chat_id] [Name]\n"
             "• /stats\n"
-            "• /myid\n\n"
+            "• /myid\n"
+            "• /lang ru or /lang en\n\n"
             "To test as a student, add yourself:\n"
             "/addstudent {chat_id} Test"
         ),
