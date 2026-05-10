@@ -2,7 +2,7 @@
 
 ## Стек
 
-- **Python 3.14+**, async/await
+- **Python 3.11+**, async/await
 - **python-telegram-bot** 22.x (webhooks)
 - **База данных**: Supabase PostgreSQL (production) / SQLite (local tests) / Google Sheets (legacy)
 - **Драйвер БД**: `psycopg2-binary` (через `asyncio.to_thread`) + `aiosqlite`

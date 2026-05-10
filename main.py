@@ -374,6 +374,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     TOKEN = os.getenv("BOT_TOKEN", "ВАШ_ТОКЕН_ЗДЕСЬ")
     WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+    WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
     PORT = int(os.environ.get("PORT", 8443))
 
     application = Application.builder().token(TOKEN).build()
@@ -393,7 +394,8 @@ def main():
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
-            webhook_url=WEBHOOK_URL
+            webhook_url=WEBHOOK_URL,
+            secret_token=WEBHOOK_SECRET
         )
     else:
         logger.info("Starting polling mode...")
@@ -402,5 +404,10 @@ def main():
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(db.init())
+    try:
+        asyncio.run(db.init())
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        raise
     main()

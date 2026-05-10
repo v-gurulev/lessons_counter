@@ -24,6 +24,7 @@
 ├── i18n.py           # Локализация (ru / en)
 ├── test_bot.py       # 36 unit-тестов (async, SQLite backend)
 ├── requirements.txt  # Зависимости
+├── runtime.txt       # Версия Python для Render
 ├── render.yaml       # Blueprint для Render
 ├── DEPLOY.md         # Чек-лист деплоя (для разработчика)
 ├── TEACHER_GUIDE.md  # Инструкция для репетитора

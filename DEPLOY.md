@@ -42,17 +42,20 @@
 
 ## Шаг 3. Подготовить репозиторий
 
-У тебя есть два варианта:
+В корне проекта должны лежать эти файлы (уже есть в репозитории):
 
-### Вариант А: деплоить из папки `python-bot/`
+```
+├── main.py           # Логика бота
+├── db.py             # База данных (SQLite / Postgres / Sheets)
+├── i18n.py           # Локализация
+├── requirements.txt  # Зависимости
+├── runtime.txt       # Версия Python (3.11.11)
+├── render.yaml       # Blueprint для Render
+├── test_bot.py       # Тесты (не деплоятся)
+└── DEPLOY.md         # Этот файл
+```
 
-В настройках Render (при создании сервиса) укажи **Root Directory**: `python-bot`
-
-### Вариант Б: деплоить из корня
-
-Файлы `main.py`, `db.py`, `requirements.txt`, `render.yaml` в корне идентичны тем, что в `python-bot/`. Можно деплоить из корня.
-
-**Рекомендация:** используй папку `python-bot/`, чтобы не тащить в деплой лишние файлы (GAS, Node.js, тесты и т.д.).
+> 💡 Файл `runtime.txt` уже есть в репозитории. Если его нет — создай с содержимым `python-3.11.11`.
 
 ---
 
@@ -63,7 +66,6 @@
 3. Укажи настройки:
    - **Name**: `lesson-counter-bot` (или любое другое)
    - **Runtime**: Python
-   - **Root Directory**: `python-bot` (если выбрал вариант А)
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `python main.py`
    - **Plan**: Free
@@ -76,6 +78,8 @@
    | `WEBHOOK_URL` | URL будущего сервиса | `https://lesson-counter-bot.onrender.com` |
    | `DATABASE_URL` | URI из Supabase | `postgresql://postgres.xxx...` |
    | `PORT` | `10000` | уже задано в `render.yaml` |
+
+   > 💡 `WEBHOOK_SECRET` генерируется автоматически (в `render.yaml`), если используешь Blueprint. Если создаёшь вручную — можно не задавать.
 
    > 💡 Язык бота (русский/английский) настраивается уже после деплоя командой `/lang` — не нужен отдельный env var.
 
@@ -135,12 +139,30 @@ https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo
    DELETE FROM config WHERE key = 'ADMIN_CHAT_ID';
    ```
 
+### Чек-лист передачи другому человеку (техническому админу)
+
+Если нужно передать проект целиком (не репетитору, а новому разработчику/владельцу):
+
+| # | Что передать | Как |
+|---|-------------|-----|
+| 1 | GitHub-репозиторий | Добавить в коллабораторы или передать форк |
+| 2 | Render-сервис | Добавить нового члена команды в Render Dashboard |
+| 3 | Supabase-проект | Пригласить в Organization в Supabase Dashboard |
+| 4 | Telegram-бот | Токен можно переслать из @BotFather или передать сам бот через @BotFather → `/mybots` → Transfer Ownership |
+| 5 | Env vars | Передать `BOT_TOKEN`, `DATABASE_URL`, `WEBHOOK_URL` (либо новый владелец задаёт свои) |
+| 6 | Инструкция для репетитора | Отправить `TEACHER_GUIDE.md` |
+
 ---
 
 ## ⚠️ Важные нюансы
 
 ### "Засыпание" на бесплатном тарифе
 На Render free tier сервис засыпает через ~15 минут бездействия. Первое сообщение после сна будет обрабатываться **30-60 секунд**. Это нормально для бесплатного хостинга.
+
+### "Засыпание" Supabase
+Supabase Free tier тоже может "засыпать" после долгого бездействия (как было в твоём случае). Если бот перестал отвечать:
+1. Зайди в Supabase Dashboard → проект → **Resume project**
+2. Перезапусти сервис на Render: **Manual Deploy → Deploy latest commit**
 
 ### Данные не теряются
 Supabase хранит данные постоянно. Даже если Render перезапустит сервер — все ученики, балансы и транзакции останутся на месте.
@@ -152,16 +174,19 @@ Supabase хранит данные постоянно. Даже если Render 
 1. Проверь статус в Render Dashboard (Logs)
 2. Перезапусти сервис вручную: Render → свой сервис → **Manual Deploy → Deploy latest commit**
 3. Проверь webhook через `getWebhookInfo` (см. шаг 5)
+4. Проверь, не уснул ли проект в Supabase Dashboard
 
 ---
 
 ## 📁 Структура для деплоя
 
 ```
-python-bot/
+.
 ├── main.py           # Логика бота
 ├── db.py             # База данных (SQLite / Postgres / Sheets)
+├── i18n.py           # Локализация
 ├── requirements.txt  # Зависимости
+├── runtime.txt       # Версия Python
 ├── render.yaml       # Blueprint для Render (опционально)
 └── test_bot.py       # Тесты (не деплоятся, но полезны)
 ```
